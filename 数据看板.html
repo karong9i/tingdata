@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>厅数据可视化看板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js">
+</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
+</script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-serif; background: #0f1923; color: #e0e0e0; min-height: 100vh; }
+
+/* 拖拽上传 */
+.drop-zone { margin: 24px 32px; border: 2px dashed #3a5068; border-radius: 16px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all .3s; background: #152230; }
+.drop-zone:hover, .drop-zone.drag-over { border-color: #42a5f5; background: #1a3040; box-shadow: 0 0 40px rgba(66,165,245,0.08); }
+.drop-zone.has-data { border-color: #66bb6a; border-style: solid; padding: 16px 24px; }
+.drop-zone .dz-icon { font-size: 56px; margin-bottom: 12px; display: block; }
+.drop-zone .dz-title { font-size: 18px; font-weight: 600; color: #b0bec5; margin-bottom: 6px; }
+.drop-zone .dz-sub { font-size: 13px; color: #546e7a; }
+.drop-zone .dz-success { display: none; color: #66bb6a; font-size: 14px; font-weight: 600; }
+.drop-zone.has-data .dz-success { display: block; }
+.drop-zone.has-data .dz-prompt { display: none; }
+.drop-zone .dz-reload { display: none; margin-top: 8px; font-size: 12px; color: #78909c; background: #243447; border: 1px solid #3a5068; padding: 6px 16px; border-radius: 6px; cursor: pointer; }
+.drop-zone.has-data .dz-reload { display: inline-block; }
+.drop-zone .dz-reload:hover { border-color: #42a5f5; color: #42a5f5; }
+
+.header { background: linear-gradient(135deg, #1a2a3a 0%, #0f1923 100%); padding: 20px 32px; border-bottom: 1px solid #2a3a4a; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.header h1 { font-size: 22px; font-weight: 700; background: linear-gradient(90deg, #64b5f6, #42a5f5); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header .subtitle { color: #78909c; font-size: 12px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; padding: 20px 32px; }
+.card { background: #1a2a3a; border: 1px solid #2a3a4a; border-radius: 12px; padding: 18px; transition: all .3s; cursor: default; }
+.card:hover { border-color: #42a5f5; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(66,165,245,0.08); }
+.card .label { font-size: 11px; color: #78909c; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.card .value { font-size: 26px; font-weight: 700; }
+.card .unit { font-size: 12px; color: #78909c; margin-left: 2px; }
+.card .sub { font-size: 11px; color: #546e7a; margin-top: 4px; }
+.card.blue .value { color: #42a5f5; }
+.card.green .value { color: #66bb6a; }
+.card.orange .value { color: #ff9800; }
+.card.purple .value { color: #ab47bc; }
+.card.red .value { color: #ef5350; }
+.card.cyan .value { color: #26c6da; }
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 14px; padding: 0 32px 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px; padding: 0 32px 20px; }
+.panel { background: #1a2a3a; border: 1px solid #2a3a4a; border-radius: 12px; overflow: hidden; }
+.panel-header { padding: 14px 18px; border-bottom: 1px solid #2a3a4a; font-size: 14px; font-weight: 600; color: #b0bec5; display: flex; align-items: center; gap: 8px; }
+.panel-header .dot { width: 8px; height: 8px; border-radius: 50%; background: #42a5f5; flex-shrink: 0; }
+.panel-body { padding: 14px; }
+.chart { width: 100%; height: 400px; }
+
+.tabs { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #2a3a4a; }
+.tab-btn { padding: 7px 18px; cursor: pointer; font-size: 13px; background: #1a2a3a; color: #78909c; border: none; transition: all .2s; }
+.tab-btn.active { background: #42a5f5; color: #fff; }
+.tab-btn:hover:not(.active) { background: #243447; color: #b0bec5; }
+
+.table-wrap { max-height: 480px; overflow-y: auto; border-radius: 0 0 12px 12px; }
+.table-wrap::-webkit-scrollbar { width: 5px; }
+.table-wrap::-webkit-scrollbar-thumb { background: #2a3a4a; border-radius: 3px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #243447; color: #90a4ae; padding: 9px 10px; text-align: left; font-weight: 500; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid #1e2d3d; white-space: nowrap; }
+tr:hover td { background: rgba(66,165,245,0.04); }
+input, select { background: #243447; border: 1px solid #2a3a4a; color: #e0e0e0; padding: 7px 12px; border-radius: 6px; font-size: 12px; outline: none; }
+input:focus, select:focus { border-color: #42a5f5; }
+select.filter-src { display: none; }
+.filter-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
+.filter-label { font-size: 11px; color: #78909c; min-width: 36px; line-height: 26px; white-space: nowrap; flex-shrink: 0; }
+.filter-chip-group { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.filter-chip { padding: 4px 12px; border-radius: 14px; font-size: 11px; cursor: pointer; border: 1px solid #3a5068; background: #1a2a3a; color: #78909c; white-space: nowrap; transition: all .15s; user-select: none; line-height: 18px; }
+.filter-chip:hover { border-color: #42a5f5; color: #b0bec5; background: #1e3040; }
+.filter-chip.on { background: #42a5f5; color: #fff; border-color: #42a5f5; }
+.filter-chip .count { margin-left: 4px; opacity: 0.6; font-size: 10px; }
+.filter-sep { border-top: 1px solid #1e2d3d; margin: 2px 0; }
+.search-bar { display: flex; gap: 10px; padding: 14px 18px; flex-wrap: wrap; align-items: center; }
+
+.footer { text-align: center; padding: 20px; color: #546e7a; font-size: 11px; border-top: 1px solid #2a3a4a; }
+#main-content { display: none; }
+#main-content.show { display: block; }
+.tip-box { margin: 20px 32px; padding: 14px 20px; background: rgba(66,165,245,0.06); border: 1px solid #1e3a50; border-radius: 10px; font-size: 12px; color: #78909c; display: flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1 id="main-title">🎙️ 厅数据可视化看板</h1>
+    <div class="subtitle">拖拽上传 Excel 文件 · 自动解析生成图表</div>
+  </div>
+  <div class="tabs" id="tab-btns" style="display:none;">
+    <button class="tab-btn active" onclick="switchView('overview')" id="btn-overview">📊 总览</button>
+    <button class="tab-btn" onclick="switchView('hall')" id="btn-hall">🏠 厅数据</button>
+    <button class="tab-btn" onclick="switchView('guest')" id="btn-guest">📅 按天分析</button>
+  </div>
+</div>
+
+<!-- 拖拽上传区 -->
+<div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+  <span class="dz-prompt">
+    <span class="dz-icon">📂</span>
+    <div class="dz-title">拖拽 Excel 文件到此处</div>
+    <div class="dz-sub">支持 .xlsx / .xls 格式 · 自动识别「厅数据-场次汇总」和「场次汇总-嘉宾明细」两个 Sheet</div>
+  </span>
+  <div class="dz-success">✅ 数据已加载成功！<span id="dz-info"></span></div>
+  <button class="dz-reload" onclick="event.stopPropagation();document.getElementById('fileInput').click();">🔄 重新上传</button>
+  <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
+</div>
+
+<!-- 主内容 -->
+<div id="main-content">
+
+  <div class="tip-box" id="tipBox">💡 数据已就绪 · <span id="tip-hall-count">0</span> 个厅、<span id="tip-guest-count">0</span> 条嘉宾记录 · 可通过顶部标签切换视图</div>
+
+  <!-- ===== 总览 ===== -->
+  <div id="view-overview">
+    <div class="cards" id="overview-cards"></div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-header"><span class="dot"></span>Top 15 厅 · 多人直播流水排名</div><div class="panel-body"><div class="chart" id="chart-hall-top"></div></div></div>
+      <div class="panel"><div class="panel-header"><span class="dot"></span>流水构成分析（本公会 vs 非本公会）</div><div class="panel-body"><div class="chart" id="chart-revenue-comp"></div></div></div>
+    </div>
+    <div class="grid-3">
+      <div class="panel"><div class="panel-header"><span class="dot"></span>经纪人流水分布</div><div class="panel-body"><div class="chart" id="chart-broker"></div></div></div>
+      <div class="panel"><div class="panel-header"><span class="dot"></span>上麦率分布</div><div class="panel-body"><div class="chart" id="chart-mic-rate"></div></div></div>
+      <div class="panel"><div class="panel-header"><span class="dot"></span>嘉宾身份类别分布</div><div class="panel-body"><div class="chart" id="chart-identity"></div></div></div>
+    </div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-header"><span class="dot"></span>粉丝量 vs 流水 · 散点分析</div><div class="panel-body"><div class="chart" id="chart-fans-revenue"></div></div></div>
+      <div class="panel"><div class="panel-header"><span class="dot"></span>直播时长 vs 流水 · 气泡分析</div><div class="panel-body"><div class="chart" id="chart-duration-revenue"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ===== 厅数据 ===== -->
+  <div id="view-hall" style="display:none;">
+    <div class="cards" id="hall-cards"></div>
+    <!-- 嘉宾明细 -->
+    <div class="cards" id="hall-guest-cards"></div>
+    <div class="panel" style="margin: 0 32px 20px;">
+      <div class="panel-header"><span class="dot"></span>嘉宾明细表</div>
+      <div class="search-bar">
+        <input type="text" id="hall-guest-search" placeholder="搜索主播昵称/厅主昵称..." oninput="filterHallGuestTable()" style="margin-bottom:6px;">
+        <div class="filter-row"><span class="filter-label">身份</span><div class="filter-chip-group" id="hall-guest-identity-chips"></div></div>
+        <div class="filter-row"><span class="filter-label">厅</span><div class="filter-chip-group" id="hall-guest-hall-chips"></div></div>
+        <div class="filter-row"><span class="filter-label">时长</span><div class="filter-chip-group" id="hall-guest-dur-chips"></div></div>
+        <div class="filter-row"><span class="filter-label">有效天</span><div class="filter-chip-group" id="hall-guest-day-chips"></div></div>
+        <select id="hall-guest-identity-filter" class="filter-src" multiple></select>
+        <select id="hall-guest-hall-filter" class="filter-src" multiple></select>
+        <select id="hall-guest-dur-filter" class="filter-src" multiple></select>
+        <select id="hall-guest-day-filter" class="filter-src" multiple></select>
+        <span style="color:#78909c;font-size:11px;" id="hall-guest-table-count"></span>
+      </div>
+      <div class="table-wrap" id="hall-guest-table-wrap"></div>
+    </div>
+    <!-- 厅场次汇总 -->
+    <div class="panel" style="margin: 0 32px 20px;">
+      <div class="panel-header"><span class="dot"></span>厅场次汇总明细表</div>
+      <div class="search-bar">
+        <input type="text" id="hall-search" placeholder="搜索厅主昵称..." oninput="filterHallTable()" style="margin-bottom:6px;">
+        <div class="filter-row"><span class="filter-label">经纪人</span><div class="filter-chip-group" id="hall-broker-chips"></div></div>
+        <div class="filter-row"><span class="filter-label">上麦率</span><div class="filter-chip-group" id="hall-mic-chips"></div></div>
+        <select id="hall-broker-filter" class="filter-src" multiple></select>
+        <select id="hall-mic-filter" class="filter-src" multiple></select>
+        <span style="color:#78909c;font-size:11px;" id="hall-table-count"></span>
+      </div>
+      <div class="table-wrap" id="hall-table-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ===== 按天分析 ===== -->
+  <div id="view-guest" style="display:none;">
+    <div class="cards" id="daily-cards"></div>
+    <div class="grid-2">
+      <div class="panel"><div class="panel-header"><span class="dot"></span>Top 20 主播 · 多人直播流水</div><div class="panel-body"><div class="chart" id="chart-guest-top"></div></div></div>
+      <div class="panel"><div class="panel-header"><span class="dot"></span>Top 20 厅 · 多人直播流水</div><div class="panel-body"><div class="chart" id="chart-guest-hall-top"></div></div></div>
+    </div>
+    <div class="panel" style="margin: 0 32px 20px;">
+      <div class="panel-header"><span class="dot"></span>按天明细 · 厅 × 日期交叉查询</div>
+      <div class="search-bar">
+        <div style="width:100%;">
+          <div class="filter-row"><span class="filter-label">选厅</span><div class="filter-chip-group" id="daily-hall-chips"></div></div>
+          <div class="filter-row"><span class="filter-label">选日期</span><div class="filter-chip-group" id="daily-date-chips"></div></div>
+        </div>
+        <select id="daily-hall-filter" class="filter-src" multiple></select>
+        <select id="daily-date-filter" class="filter-src" multiple></select>
+        <span style="color:#78909c;font-size:11px;" id="daily-table-count"></span>
+      </div>
+      <div class="table-wrap" id="daily-table-wrap"></div>
+    </div>
+  </div>
+
+  <div class="footer" id="main-footer">厅数据可视化看板 · 拖拽 Excel 即用 · 数据仅本地处理，不上传服务器</div>
+</div>
+
+<script>
+// ==========================================
+// 🔒 到期日期: 过了这天看板自动失效
+// 修改下面的日期即可延期，重新发给老板
+// ==========================================
+var EXPIRE_DATE = '2026-06-26';  // 改这里：年-月-日
+
+(function checkExpire() {
+  var expireTime = new Date(EXPIRE_DATE + 'T23:59:59').getTime();
+  var now = Date.now();
+  if (now > expireTime) {
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#78909c;font-size:18px;font-family:sans-serif;">⛔ 看板已过期，请联系数据提供方获取最新版本</div>';
+  }
+})();
+
+// ===== 全局 =====
+let SUMMARY = [];
+let DETAIL = [];
+let DAILY = [];
+
+// ===== 拖拽事件 =====
+const dropZone = document.getElementById('dropZone');
+['dragenter','dragover'].forEach(function(evt){
+  dropZone.addEventListener(evt, function(e){ e.preventDefault(); dropZone.classList.add('drag-over'); });
+});
+['dragleave','drop'].forEach(function(evt){
+  dropZone.addEventListener(evt, function(e){ e.preventDefault(); dropZone.classList.remove('drag-over'); });
+});
+dropZone.addEventListener('drop', function(e){
+  var file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+// ===== 文件处理 =====
+function handleFile(file) {
+  if (!file) return;
+  var expireTime = new Date(EXPIRE_DATE + 'T23:59:59').getTime();
+  if (Date.now() > expireTime) { alert('看板已过期，请联系数据提供方'); return; }
+  processFile(file);
+}
+
+function processFile(file) {
+  var ext = file.name.split('.').pop().toLowerCase();
+  if (['xlsx','xls'].indexOf(ext) === -1) { alert('请上传 .xlsx 或 .xls 格式的 Excel 文件'); return; }
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'array' });
+      var sheetNames = wb.SheetNames;
+      console.log('Sheets:', sheetNames);
+
+      // 自动匹配 Sheet
+      var summaryName = null, detailName = null, dailyName = null;
+      sheetNames.forEach(function(name){
+        if ((name.indexOf('场次汇总') !== -1 || name.indexOf('厅数据') !== -1) && name.indexOf('嘉宾') === -1 && name.indexOf('按天') === -1) summaryName = name;
+        if (name.indexOf('嘉宾明细') !== -1 || (name.indexOf('嘉宾') !== -1 && name.indexOf('按天') === -1)) detailName = name;
+        if (name.indexOf('按天') !== -1) dailyName = name;
+      });
+      if (!summaryName && sheetNames.length >= 1) summaryName = sheetNames[0];
+      if (!detailName && sheetNames.length >= 2) detailName = sheetNames[1];
+
+      if (!summaryName) { alert('未找到厅数据汇总 Sheet，请确认文件格式'); return; }
+
+      SUMMARY = XLSX.utils.sheet_to_json(wb.Sheets[summaryName], { defval: '' });
+      DETAIL = detailName ? XLSX.utils.sheet_to_json(wb.Sheets[detailName], { defval: '' }) : [];
+      DAILY = dailyName ? XLSX.utils.sheet_to_json(wb.Sheets[dailyName], { defval: '' }) : [];
+
+      console.log('Parsed: ' + SUMMARY.length + ' summary, ' + DETAIL.length + ' detail, ' + DAILY.length + ' daily');
+
+      if (SUMMARY.length === 0) { alert('数据为空，请确认文件内容'); return; }
+
+      // 更新 UI
+      dropZone.classList.add('has-data');
+      document.getElementById('dz-info').textContent = ' 解析到 ' + SUMMARY.length + ' 个厅、' + DETAIL.length + ' 条嘉宾记录';
+      document.getElementById('main-content').classList.add('show');
+      document.getElementById('tab-btns').style.display = 'flex';
+      document.getElementById('tip-hall-count').textContent = SUMMARY.length;
+      document.getElementById('tip-guest-count').textContent = DETAIL.length;
+
+      destroyAllCharts();
+      switchView('overview');
+
+    } catch(err) {
+      console.error(err);
+      alert('文件解析失败: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ===== 工具 =====
+function pNum(v) {
+  if (v === '' || v === null || v === undefined) return 0;
+  if (typeof v === 'number') return v;
+  var s = String(v).replace(/,/g, '').replace(/"/g, '').trim();
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+function pPct(v) {
+  if (v === '' || v === null || v === undefined) return 0;
+  return parseFloat(String(v).replace('%','')) || 0;
+}
+function pDur(v) {
+  if (!v) return 0;
+  var s = String(v), h = 0;
+  var hm = s.match(/(\d+)小时/), mm = s.match(/(\d+)分钟/);
+  if (hm) h += parseInt(hm[1]);
+  if (mm) h += parseInt(mm[1]) / 60;
+  return h;
+}
+
+// ===== 图表管理 =====
+var chartInstances = {};
+var allChartIds = ['chart-hall-top','chart-revenue-comp','chart-broker','chart-mic-rate','chart-identity','chart-fans-revenue','chart-duration-revenue','chart-guest-top','chart-guest-hall-top'];
+
+function getChart(id) {
+  var el = document.getElementById(id);
+  if (!el) return null;
+  if (chartInstances[id]) chartInstances[id].dispose();
+  chartInstances[id] = echarts.init(el);
+  return chartInstances[id];
+}
+
+function destroyAllCharts() {
+  allChartIds.forEach(function(id){
+    if (chartInstances[id]) { chartInstances[id].dispose(); delete chartInstances[id]; }
+  });
+}
+
+function resizeAll() {
+  allChartIds.forEach(function(id){
+    if (chartInstances[id]) chartInstances[id].resize();
+  });
+}
+
+// ===== 视图切换 =====
+function switchView(view) {
+  ['overview','hall','guest'].forEach(function(v){
+    var el = document.getElementById('view-'+v);
+    if (el) el.style.display = v===view ? 'block' : 'none';
+    var btn = document.getElementById('btn-'+v);
+    if (btn) { btn.classList.remove('active'); if (v===view) btn.classList.add('active'); }
+  });
+
+  if (SUMMARY.length === 0) return;
+
+  if (view === 'overview') buildOverview();
+  if (view === 'hall') buildHallView();
+  if (view === 'guest') buildDailyView();
+
+  setTimeout(resizeAll, 200);
+}
+
+// ===== 总览 =====
+function buildOverview() {
+  var totalRev = 0, totalGuild = 0, totalNonGuild = 0, totalFans = 0, totalMic = 0, totalDur = 0, certCount = 0;
+  SUMMARY.forEach(function(r){
+    totalRev += pNum(r['多人直播流水(元)']);
+    totalGuild += pNum(r['本公会多人直播流水(元)']);
+    totalNonGuild += pNum(r['非本公会多人直播流水(元)']);
+    totalFans += pNum(r['粉丝量']);
+    totalMic += pPct(r['上麦率']);
+    totalDur += pDur(r['直播时长']);
+    if (r['是否提报认证'] === '是') certCount++;
+  });
+  // 厅主流水 & 本公会主播流水
+  var totalHost = 0;
+  DETAIL.forEach(function(r){ if (r['主播身份类别'] === '厅主') totalHost += pNum(r['多人直播流水(元)']); });
+  var totalGuildStreamer = totalGuild - totalHost;  // 本公会主播 = 本公会 - 厅主
+  var avgMic = totalMic / SUMMARY.length;
+  var hallAvg = totalRev / SUMMARY.length;
+
+  document.getElementById('overview-cards').innerHTML =
+    '<div class="card blue"><div class="label">厅总数</div><div class="value">'+SUMMARY.length+'<span class="unit">个</span></div><div class="sub">认证 '+certCount+' 个</div></div>' +
+    '<div class="card green"><div class="label">总流水</div><div class="value">'+(totalRev/10000).toFixed(1)+'<span class="unit">万元</span></div><div class="sub">¥'+totalRev.toLocaleString('zh-CN',{maximumFractionDigits:0})+'</div></div>' +
+    '<div class="card orange">' +
+      '<div class="label">本公会流水</div><div class="value">'+(totalGuild/10000).toFixed(1)+'<span class="unit">万元</span></div>' +
+      '<div class="sub">占比 '+(totalRev>0?(totalGuild/totalRev*100).toFixed(1):0)+'%</div>' +
+      '<div style="display:flex;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid #2a3a4a;">' +
+        '<div style="flex:1;background:#1e3040;border-radius:8px;padding:8px 10px;">' +
+          '<div style="font-size:10px;color:#78909c;margin-bottom:3px;">└ 厅主</div>' +
+          '<div style="font-size:16px;font-weight:700;color:#ff9800;">'+(totalHost/10000).toFixed(1)+'<span style="font-size:10px;color:#78909c;">万</span></div>' +
+          '<div style="font-size:10px;color:#546e7a;">占本公会 '+(totalGuild>0?(totalHost/totalGuild*100).toFixed(1):0)+'%</div>' +
+        '</div>' +
+        '<div style="flex:1;background:#1e3040;border-radius:8px;padding:8px 10px;">' +
+          '<div style="font-size:10px;color:#78909c;margin-bottom:3px;">└ 本公会主播</div>' +
+          '<div style="font-size:16px;font-weight:700;color:#42a5f5;">'+(totalGuildStreamer/10000).toFixed(1)+'<span style="font-size:10px;color:#78909c;">万</span></div>' +
+          '<div style="font-size:10px;color:#546e7a;">占本公会 '+(totalGuild>0?(totalGuildStreamer/totalGuild*100).toFixed(1):0)+'%</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card purple"><div class="label">非本公会流水</div><div class="value">'+(totalNonGuild/10000).toFixed(1)+'<span class="unit">万元</span></div><div class="sub">占比 '+(totalRev>0?(totalNonGuild/totalRev*100).toFixed(1):0)+'%</div></div>' +
+    '<div class="card cyan"><div class="label">总粉丝量</div><div class="value">'+(totalFans/10000).toFixed(1)+'<span class="unit">万</span></div><div class="sub">均 '+(totalFans/SUMMARY.length).toFixed(0)+' 粉/厅</div></div>' +
+    '<div class="card red"><div class="label">平均上麦率</div><div class="value">'+avgMic.toFixed(0)+'<span class="unit">%</span></div><div class="sub">总直播 '+totalDur.toFixed(0)+'h</div></div>' +
+    '<div class="card" style="border-color:#ff7043;">' +
+      '<div class="label" style="color:#ff7043;">嘉宾总数</div><div class="value" style="color:#ff7043;">'+DETAIL.length+'<span class="unit">人</span></div>' +
+      '<div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #2a3a4a;">' + (function(){
+        var idCount = {};
+        DETAIL.forEach(function(r){ var id = r['主播身份类别']||'未知'; idCount[id] = (idCount[id]||0)+1; });
+        var colors = { '厅主':'#ff9800', '本公会主播':'#42a5f5', '素人主播':'#66bb6a', '其他公会主播':'#ab47bc', '未知':'#78909c' };
+        return Object.keys(idCount).sort(function(a,b){ return idCount[b]-idCount[a]; }).map(function(k){
+          var c = colors[k] || '#78909c';
+          return '<div style="flex:1;background:#1e3040;border-radius:6px;padding:6px 8px;text-align:center;"><div style="font-size:10px;color:#78909c;">'+k+'</div><div style="font-size:14px;font-weight:700;color:'+c+';">'+idCount[k]+'<span style="font-size:10px;color:#78909c;">人</span></div></div>';
+        }).join('');
+      })() + '</div>' +
+    '</div>' +
+    '<div class="card" style="border-color:#7e57c2;">' +
+      '<div class="label" style="color:#7e57c2;">厅均流水</div><div class="value" style="color:#7e57c2;">'+(hallAvg/10000).toFixed(2)+'<span class="unit">万元</span></div>' +
+      '<div style="display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid #2a3a4a;">' +
+        '<div style="flex:1;background:#1e3040;border-radius:6px;padding:6px 8px;text-align:center;">' +
+          '<div style="font-size:10px;color:#78909c;">厅主</div>' +
+          '<div style="font-size:14px;font-weight:700;color:#ff9800;">'+(totalHost/SUMMARY.length/10000).toFixed(2)+'<span style="font-size:10px;color:#78909c;">万</span></div>' +
+        '</div>' +
+        '<div style="flex:1;background:#1e3040;border-radius:6px;padding:6px 8px;text-align:center;">' +
+          '<div style="font-size:10px;color:#78909c;">本公会主播</div>' +
+          '<div style="font-size:14px;font-weight:700;color:#42a5f5;">'+(totalGuildStreamer/SUMMARY.length/10000).toFixed(2)+'<span style="font-size:10px;color:#78909c;">万</span></div>' +
+        '</div>' +
+        '<div style="flex:1;background:#1e3040;border-radius:6px;padding:6px 8px;text-align:center;">' +
+          '<div style="font-size:10px;color:#78909c;">非本公会</div>' +
+          '<div style="font-size:14px;font-weight:700;color:#ab47bc;">'+(totalNonGuild/SUMMARY.length/10000).toFixed(2)+'<span style="font-size:10px;color:#78909c;">万</span></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  // Top 15 厅
+  var topHalls = SUMMARY.slice().sort(function(a,b){ return pNum(b['多人直播流水(元)']) - pNum(a['多人直播流水(元)']); }).slice(0, 15);
+  var c1 = getChart('chart-hall-top');
+  c1.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(p){ return '<b>'+p[0].name+'</b><br/>总流水: ¥'+p[0].value.toLocaleString(); } },
+    grid: { left: 140, right: 55, top: 8, bottom: 20 },
+    xAxis: { type: 'value', axisLabel: { color: '#78909c', formatter: function(v){ return (v/10000).toFixed(0)+'w'; } }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    yAxis: { type: 'category', data: topHalls.map(function(r){ return r['厅主昵称']||''; }).reverse(), axisLabel: { color: '#b0bec5', fontSize: 10, width: 120, overflow: 'truncate' }, inverse: true },
+    series: [{ type: 'bar', data: topHalls.map(function(r){ return pNum(r['多人直播流水(元)']); }).reverse(),
+      itemStyle: { color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#1565c0'},{offset:1,color:'#42a5f5'}]), borderRadius: [0,4,4,0] },
+      label: { show: true, position: 'right', color: '#90a4ae', fontSize: 10, formatter: function(p){ return (p.value/10000).toFixed(1)+'w'; } } }]
+  });
+
+  // 流水构成
+  var gNormal = 0, gLucky = 0, ngNormal = 0, ngLucky = 0;
+  SUMMARY.forEach(function(r){
+    gNormal += pNum(r['本公会多人直播普通礼物流水(元)']);
+    gLucky += pNum(r['本公会多人直播幸运值礼物流水(元)']);
+    ngNormal += pNum(r['非本公会多人直播普通礼物流水(元)']);
+    ngLucky += pNum(r['非本公会多人直播幸运值礼物流水(元)']);
+  });
+  var c2 = getChart('chart-revenue-comp');
+  c2.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+    legend: { bottom: 0, textStyle: { color: '#90a4ae', fontSize: 10 } },
+    series: [
+      { name: '本公会流水构成', type: 'pie', radius: ['32%','52%'], center: ['28%','48%'], label: { color: '#b0bec5', fontSize: 10 },
+        data: [{ name: '普通礼物', value: gNormal, itemStyle: { color: '#42a5f5' } },{ name: '幸运值礼物', value: gLucky, itemStyle: { color: '#1e88e5' } }] },
+      { name: '非本公会流水构成', type: 'pie', radius: ['32%','52%'], center: ['72%','48%'], label: { color: '#b0bec5', fontSize: 10 },
+        data: [{ name: '普通礼物', value: ngNormal, itemStyle: { color: '#ff9800' } },{ name: '幸运值礼物', value: ngLucky, itemStyle: { color: '#f57c00' } }] }
+    ],
+    graphic: [
+      { type:'text', left:'21%', top:'44%', style:{ text:'本公会\n'+(totalGuild/10000).toFixed(1)+'w', fill:'#42a5f5', fontSize:13, fontWeight:'bold', textAlign:'center' } },
+      { type:'text', left:'65%', top:'44%', style:{ text:'非本公会\n'+(totalNonGuild/10000).toFixed(1)+'w', fill:'#ff9800', fontSize:13, fontWeight:'bold', textAlign:'center' } }
+    ]
+  });
+
+  // 经纪人
+  var brokerMap = {};
+  SUMMARY.forEach(function(r){ var b = r['经纪人名称'] || '无经纪人'; brokerMap[b] = (brokerMap[b]||0) + pNum(r['多人直播流水(元)']); });
+  var brokerArr = Object.keys(brokerMap).map(function(k){ return {name:k,value:brokerMap[k]}; }).sort(function(a,b){ return b.value-a.value; });
+  var c3 = getChart('chart-broker');
+  c3.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+    series: [{ type: 'pie', radius: ['42%','72%'], roseType: 'area', label: { color: '#b0bec5', fontSize: 10, formatter: '{b}\n{d}%' },
+      data: brokerArr, itemStyle: { borderRadius: 3, borderColor: '#0f1923', borderWidth: 2 } }]
+  });
+
+  // 上麦率分布
+  var micBuckets = {'0-20%':0,'20-40%':0,'40-60%':0,'60-80%':0,'80-100%':0};
+  SUMMARY.forEach(function(r){ var v = pPct(r['上麦率']);
+    if(v<=20) micBuckets['0-20%']++; else if(v<=40) micBuckets['20-40%']++; else if(v<=60) micBuckets['40-60%']++; else if(v<=80) micBuckets['60-80%']++; else micBuckets['80-100%']++; });
+  var c4 = getChart('chart-mic-rate');
+  c4.setOption({
+    tooltip: { trigger: 'axis' }, grid: { left: 45, right: 25, top: 15, bottom: 25 },
+    xAxis: { type: 'category', data: Object.keys(micBuckets), axisLabel: { color: '#90a4ae' }, axisLine: { lineStyle: { color: '#2a3a4a' } } },
+    yAxis: { type: 'value', name: '厅数', axisLabel: { color: '#78909c' }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    series: [{ type: 'bar', data: Object.values(micBuckets), itemStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#ab47bc'},{offset:1,color:'#7b1fa2'}]), borderRadius: [6,6,0,0] }, label: { show: true, position: 'top', color: '#b0bec5', fontSize: 12, fontWeight: 'bold' } }]
+  });
+
+  // 身份分布
+  var idMap = {};
+  DETAIL.forEach(function(r){ var id = r['主播身份类别'] || '未知'; idMap[id] = (idMap[id]||0)+1; });
+  var idArr = Object.keys(idMap).map(function(k){ return {name:k,value:idMap[k]}; });
+  var c5 = getChart('chart-identity');
+  c5.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c}人 ({d}%)' },
+    series: [{ type: 'pie', radius: ['38%','68%'], label: { color: '#b0bec5', fontSize: 11, formatter: '{b}\n{c}人' },
+      data: idArr, itemStyle: { borderRadius: 3, borderColor: '#0f1923', borderWidth: 2 } }]
+  });
+
+  // 粉丝 vs 流水
+  var scatterData = SUMMARY.map(function(r){ return [pNum(r['粉丝量']), pNum(r['多人直播流水(元)']), r['厅主昵称']||'']; });
+  var c6 = getChart('chart-fans-revenue');
+  c6.setOption({
+    tooltip: { trigger: 'item', formatter: function(p){ return '<b>'+p.data[2]+'</b><br/>粉丝: '+p.data[0].toLocaleString()+'<br/>流水: ¥'+p.data[1].toLocaleString(); } },
+    grid: { left: 65, right: 25, top: 15, bottom: 45 },
+    xAxis: { type: 'value', name: '粉丝量', axisLabel: { color: '#78909c' }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    yAxis: { type: 'value', name: '流水(元)', axisLabel: { color: '#78909c', formatter: function(v){ return (v/10000).toFixed(0)+'w'; } }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    series: [{ type: 'scatter', data: scatterData, symbolSize: function(v){ return Math.sqrt(v[1])/30 + 5; }, itemStyle: { color: '#42a5f5', opacity: 0.7 }, emphasis: { itemStyle: { color: '#ff9800', opacity: 1 } } }]
+  });
+
+  // 时长 vs 流水
+  var durData = SUMMARY.map(function(r){ var d = pDur(r['直播时长']); return [d, pNum(r['多人直播流水(元)']), r['厅主昵称']||'', pNum(r['粉丝量'])]; });
+  var c7 = getChart('chart-duration-revenue');
+  c7.setOption({
+    tooltip: { trigger: 'item', formatter: function(p){ return '<b>'+p.data[2]+'</b><br/>时长: '+p.data[0].toFixed(0)+'h<br/>流水: ¥'+p.data[1].toLocaleString()+'<br/>粉丝: '+p.data[3].toLocaleString(); } },
+    grid: { left: 65, right: 25, top: 15, bottom: 45 },
+    xAxis: { type: 'value', name: '直播时长(小时)', axisLabel: { color: '#78909c' }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    yAxis: { type: 'value', name: '流水(元)', axisLabel: { color: '#78909c', formatter: function(v){ return (v/10000).toFixed(0)+'w'; } }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    series: [{ type: 'scatter', data: durData, symbolSize: function(v){ return Math.sqrt(v[3])/20 + 3; }, itemStyle: { color: '#ab47bc', opacity: 0.65 }, emphasis: { itemStyle: { color: '#ff9800', opacity: 1 } } }]
+  });
+}
+
+// ===== 厅数据 =====
+function buildHallView() {
+  var totalRev = 0;
+  SUMMARY.forEach(function(r){ totalRev += pNum(r['多人直播流水(元)']); });
+  var sorted = SUMMARY.slice().sort(function(a,b){ return pNum(b['多人直播流水(元)']) - pNum(a['多人直播流水(元)']); });
+  var top3 = 0, top10 = 0;
+  sorted.slice(0,3).forEach(function(r){ top3 += pNum(r['多人直播流水(元)']); });
+  sorted.slice(0,10).forEach(function(r){ top10 += pNum(r['多人直播流水(元)']); });
+
+  document.getElementById('hall-cards').innerHTML =
+    '<div class="card blue"><div class="label">厅总数</div><div class="value">'+SUMMARY.length+'</div></div>' +
+    '<div class="card green"><div class="label">总流水</div><div class="value">'+(totalRev/10000).toFixed(1)+'<span class="unit">万元</span></div></div>' +
+    '<div class="card orange"><div class="label">Top3 集中度</div><div class="value">'+(top3/totalRev*100).toFixed(1)+'<span class="unit">%</span></div><div class="sub">Top3流水占总流水</div></div>' +
+    '<div class="card purple"><div class="label">Top10 集中度</div><div class="value">'+(top10/totalRev*100).toFixed(1)+'<span class="unit">%</span></div><div class="sub">Top10流水占总流水</div></div>';
+
+  // 厅经纪人 chips
+  var brokers = [];
+  SUMMARY.forEach(function(r){ if (r['经纪人名称'] && brokers.indexOf(r['经纪人名称']) === -1) brokers.push(r['经纪人名称']); });
+  brokers.sort();
+  buildChips('hall-broker-filter', 'hall-broker-chips', brokers.map(function(b){ return {value:b, label:b}; }), filterHallTable);
+
+  // 上麦率 chips
+  buildChips('hall-mic-filter', 'hall-mic-chips', [
+    {value:'0-20', label:'0-20%'},{value:'20-40', label:'20-40%'},{value:'40-60', label:'40-60%'},{value:'60-80', label:'60-80%'},{value:'80-100', label:'80-100%'}
+  ], filterHallTable);
+
+  // 嘉宾身份 chips
+  var ids = [];
+  DETAIL.forEach(function(r){ if (r['主播身份类别'] && ids.indexOf(r['主播身份类别']) === -1) ids.push(r['主播身份类别']); });
+  ids.sort();
+  buildChips('hall-guest-identity-filter', 'hall-guest-identity-chips', ids.map(function(b){ return {value:b, label:b}; }), filterHallGuestTable);
+
+  // 嘉宾厅 chips (top 30 halls)
+  var gHallCount = {};
+  DETAIL.forEach(function(r){ var h = r['厅主昵称']; if (h) gHallCount[h] = (gHallCount[h]||0)+1; });
+  var gHalls = Object.keys(gHallCount).sort(function(a,b){ return gHallCount[b]-gHallCount[a]; });
+  buildChips('hall-guest-hall-filter', 'hall-guest-hall-chips', gHalls.map(function(b){ return {value:b, label:b, count:gHallCount[b]}; }), filterHallGuestTable);
+
+  // 上麦时长 chips
+  buildChips('hall-guest-dur-filter', 'hall-guest-dur-chips', [
+    {value:'0-50', label:'0-50h'},{value:'50-100', label:'50-100h'},{value:'100-200', label:'100-200h'},{value:'200-300', label:'200-300h'},{value:'300-9999', label:'300h+'}
+  ], filterHallGuestTable);
+
+  // 上麦有效天 chips
+  buildChips('hall-guest-day-filter', 'hall-guest-day-chips', [
+    {value:'0-5', label:'0-5天'},{value:'6-10', label:'6-10天'},{value:'11-15', label:'11-15天'},{value:'16-20', label:'16-20天'},{value:'21-25', label:'21-25天'},{value:'26-31', label:'26-31天'}
+  ], filterHallGuestTable);
+
+  renderHallTable(SUMMARY);
+  filterHallGuestTable();
+}
+
+function renderHallTable(data) {
+  document.getElementById('hall-table-count').textContent = '共 ' + data.length + ' 个厅';
+  var cols = ['厅主昵称','粉丝量','经纪人名称','上麦率','开播有效天','直播时长','多人直播流水(元)','本公会多人直播流水(元)','非本公会多人直播流水(元)','本公会多人直播普通礼物流水(元)','本公会多人直播幸运值礼物流水(元)'];
+  var html = '<table><thead><tr><th>#</th>';
+  cols.forEach(function(c){ html += '<th>'+c+'</th>'; });
+  html += '</tr></thead><tbody>';
+  data.forEach(function(r, i){
+    html += '<tr><td style="color:#546e7a;">'+(i+1)+'</td>';
+    cols.forEach(function(c){
+      var v = r[c] !== undefined ? r[c] : '';
+      var display = String(v);
+      if (c.indexOf('流水') !== -1 && typeof v === 'number') display = '¥' + v.toLocaleString('zh-CN', {minimumFractionDigits:2});
+      else if (c.indexOf('流水') !== -1 && !isNaN(parseFloat(v)) && v !== '') display = '¥' + parseFloat(v).toLocaleString('zh-CN', {minimumFractionDigits:2});
+      if (c === '粉丝量' && !isNaN(parseFloat(v)) && v !== '') display = parseInt(v).toLocaleString();
+      html += '<td>'+display+'</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('hall-table-wrap').innerHTML = html;
+}
+
+function getSelectedValues(id) {
+  var sel = document.getElementById(id);
+  if (!sel) return [];
+  var vals = [];
+  for (var i = 0; i < sel.selectedOptions.length; i++) {
+    var v = sel.selectedOptions[i].value;
+    if (v !== '' && v !== undefined) vals.push(v);
+  }
+  return vals;
+}
+
+function buildChips(selectId, chipGroupId, options, onChange) {
+  var sel = document.getElementById(selectId);
+  var group = document.getElementById(chipGroupId);
+  if (!sel || !group) return;
+  // 重建 select options
+  sel.innerHTML = '';
+  options.forEach(function(opt){
+    var o = document.createElement('option');
+    o.value = opt.value;
+    o.text = opt.label;
+    sel.appendChild(o);
+  });
+  // 清空并先加"全部" chip
+  group.innerHTML = '';
+  var allChip = document.createElement('span');
+  allChip.className = 'filter-chip on';
+  allChip.textContent = '全部';
+  allChip.onclick = function(){
+    // 取消所有选项
+    for (var i = 0; i < sel.options.length; i++) { sel.options[i].selected = false; }
+    // 更新所有 chip 样式
+    var chips = group.querySelectorAll('.filter-chip');
+    for (var j = 0; j < chips.length; j++) { chips[j].classList.remove('on'); }
+    allChip.classList.add('on');
+    if (onChange) onChange();
+  };
+  group.appendChild(allChip);
+
+  // 重建具体选项 chips
+  options.forEach(function(opt){
+    var chip = document.createElement('span');
+    chip.className = 'filter-chip';
+    chip.textContent = opt.label;
+    if (opt.count !== undefined) {
+      var cnt = document.createElement('span');
+      cnt.className = 'count';
+      cnt.textContent = opt.count;
+      chip.appendChild(cnt);
+    }
+    chip.onclick = function(){
+      // 先取消"全部"
+      allChip.classList.remove('on');
+      // toggle option
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === opt.value) {
+          sel.options[i].selected = !sel.options[i].selected;
+          break;
+        }
+      }
+      chip.classList.toggle('on', sel.options[Array.from(sel.options).findIndex(function(o){ return o.value === opt.value; })].selected);
+      // 如果没有选中项，"全部"自动亮起
+      var anyOn = group.querySelectorAll('.filter-chip.on').length > 0;
+      if (!anyOn) allChip.classList.add('on');
+      if (onChange) onChange();
+    };
+    group.appendChild(chip);
+  });
+}
+
+function filterHallTable() {
+  var search = document.getElementById('hall-search').value.toLowerCase();
+  var brokers = getSelectedValues('hall-broker-filter');
+  var mics = getSelectedValues('hall-mic-filter');
+  var filtered = SUMMARY;
+  if (search) filtered = filtered.filter(function(r){ return String(r['厅主昵称']||'').toLowerCase().indexOf(search) !== -1; });
+  if (brokers.length > 0) filtered = filtered.filter(function(r){ return brokers.indexOf(r['经纪人名称']) !== -1; });
+  if (mics.length > 0) {
+    filtered = filtered.filter(function(r){
+      var v = pPct(r['上麦率']);
+      return mics.some(function(range){
+        var parts = range.split('-');
+        return v >= parseInt(parts[0]) && v <= parseInt(parts[1]);
+      });
+    });
+  }
+  renderHallTable(filtered);
+}
+
+// ---- 厅内嵌嘉宾明细 ----
+function updateHallGuestCards(data) {
+  var total = data.length;
+  var totalRev = 0;
+  data.forEach(function(r){ totalRev += pNum(r['多人直播流水(元)']); });
+  document.getElementById('hall-guest-cards').innerHTML =
+    '<div class="card blue"><div class="label">嘉宾人数</div><div class="value">'+total+'<span class="unit">人</span></div></div>' +
+    '<div class="card green"><div class="label">嘉宾总流水</div><div class="value">'+(totalRev/10000).toFixed(1)+'<span class="unit">万元</span></div></div>' +
+    '<div class="card orange" id="card-hall-avg"><div class="label">人均流水 <select onchange="updateHallAvgCard(this.value)" onclick="event.stopPropagation()" style="margin-left:6px;padding:2px 6px;font-size:10px;background:#1a2a3a;border:1px solid #3a5068;color:#78909c;border-radius:4px;" id="hall-avg-identity-select"></select></div><div class="value" id="hall-avg-value">¥0</div></div>';
+  // 填充分均流水下拉
+  var ids = [];
+  DETAIL.forEach(function(r){ if (r['主播身份类别'] && ids.indexOf(r['主播身份类别']) === -1) ids.push(r['主播身份类别']); });
+  ids.sort();
+  var sel = document.getElementById('hall-avg-identity-select');
+  if (sel) { sel.innerHTML = '<option value="">全部</option>' + ids.map(function(b){ return '<option value="'+b+'">'+b+'</option>'; }).join(''); }
+  updateHallAvgCard('');
+}
+
+function updateHallAvgCard(identity) {
+  var filtered = DETAIL;
+  if (identity) filtered = DETAIL.filter(function(r){ return r['主播身份类别'] === identity; });
+  var total = filtered.length;
+  var totalRev = 0;
+  filtered.forEach(function(r){ totalRev += pNum(r['多人直播流水(元)']); });
+  var avg = total > 0 ? totalRev / total : 0;
+  var el = document.getElementById('hall-avg-value');
+  if (el) el.innerHTML = '¥' + avg.toFixed(0) + '<span class="unit" style="font-size:12px;color:#78909c;"> / ' + total + '人</span>';
+}
+
+function renderHallGuestTable(data) {
+  var totalRev = 0;
+  data.forEach(function(r){ totalRev += pNum(r['多人直播流水(元)']); });
+  var avgRev = data.length > 0 ? totalRev / data.length : 0;
+  document.getElementById('hall-guest-table-count').textContent = '共筛选出 ' + data.length + ' 人 · 总收入 ¥' + totalRev.toLocaleString('zh-CN', {minimumFractionDigits: 2}) + ' · 人均 ¥' + avgRev.toFixed(0);
+  var cols = ['厅主昵称','主播昵称','主播身份类别','上麦时长','上麦有效天','开播有效天','多人直播流水(元)','多人直播普通礼物流水(元)','多人直播幸运值礼物流水(元)'];
+  var html = '<table><thead><tr><th>#</th>';
+  cols.forEach(function(c){ html += '<th>'+c+'</th>'; });
+  html += '</tr></thead><tbody>';
+  data.forEach(function(r, i){
+    html += '<tr><td style="color:#546e7a;">'+(i+1)+'</td>';
+    cols.forEach(function(c){
+      var v = r[c] !== undefined ? r[c] : '';
+      var display = String(v);
+      if (c.indexOf('流水') !== -1 && typeof v === 'number') display = '¥' + v.toLocaleString('zh-CN', {minimumFractionDigits:2});
+      else if (c.indexOf('流水') !== -1 && !isNaN(parseFloat(v)) && v !== '') display = '¥' + parseFloat(v).toLocaleString('zh-CN', {minimumFractionDigits:2});
+      html += '<td style="'+(c==='主播昵称'?'font-weight:500;':'')+'">'+display+'</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('hall-guest-table-wrap').innerHTML = html;
+}
+
+function filterHallGuestTable() {
+  var search = document.getElementById('hall-guest-search').value.toLowerCase();
+  var identities = getSelectedValues('hall-guest-identity-filter');
+  var halls = getSelectedValues('hall-guest-hall-filter');
+  var durs = getSelectedValues('hall-guest-dur-filter');
+  var days = getSelectedValues('hall-guest-day-filter');
+  var filtered = DETAIL;
+  if (search) filtered = filtered.filter(function(r){ return String(r['主播昵称']||'').toLowerCase().indexOf(search)!==-1 || String(r['厅主昵称']||'').toLowerCase().indexOf(search)!==-1; });
+  if (identities.length > 0) filtered = filtered.filter(function(r){ return identities.indexOf(r['主播身份类别']) !== -1; });
+  if (halls.length > 0) filtered = filtered.filter(function(r){ return halls.indexOf(r['厅主昵称']) !== -1; });
+  if (durs.length > 0) {
+    filtered = filtered.filter(function(r){
+      var h = pDur(r['上麦时长']);
+      return durs.some(function(range){
+        var parts = range.split('-');
+        return h >= parseInt(parts[0]) && h <= parseInt(parts[1]);
+      });
+    });
+  }
+  if (days.length > 0) {
+    filtered = filtered.filter(function(r){
+      var d = pNum(r['上麦有效天']);
+      return days.some(function(range){
+        var parts = range.split('-');
+        return d >= parseInt(parts[0]) && d <= parseInt(parts[1]);
+      });
+    });
+  }
+  updateHallGuestCards(filtered);
+  renderHallGuestTable(filtered);
+}
+
+// ===== 按天分析 =====
+function buildDailyView() {
+  if (DAILY.length === 0) {
+    document.getElementById('daily-cards').innerHTML = '<div class="card" style="grid-column:1/-1;"><div class="label">当前文件无「按天明细」Sheet</div><div class="value" style="font-size:16px;color:#78909c;">请使用「厅数据明细5月全部.xlsx」</div></div>';
+    document.getElementById('daily-hall-chips').innerHTML = '';
+    document.getElementById('daily-date-chips').innerHTML = '';
+    document.getElementById('daily-table-wrap').innerHTML = '';
+    return;
+  }
+
+  // 统计卡片
+  var dailyTotal = 0;
+  DAILY.forEach(function(r){ dailyTotal += pNum(r['多人直播直播流水']); });
+  var hallSet = {};
+  DAILY.forEach(function(r){ if (r['厅主昵称']) hallSet[r['厅主昵称']] = true; });
+  var dailyHalls = Object.keys(hallSet).length;
+  var dateSet = {};
+  DAILY.forEach(function(r){ var d = String(r['日期']||'').trim(); if (d.length>=8) dateSet[d.substring(d.length-2)] = true; });
+  var dailyDays = Object.keys(dateSet).length;
+
+  document.getElementById('daily-cards').innerHTML =
+    '<div class="card blue"><div class="label">按天记录数</div><div class="value">'+DAILY.length+'<span class="unit">条</span></div></div>' +
+    '<div class="card green"><div class="label">总流水</div><div class="value">'+(dailyTotal/10000).toFixed(1)+'<span class="unit">万元</span></div></div>' +
+    '<div class="card orange"><div class="label">活跃厅数</div><div class="value">'+dailyHalls+'<span class="unit">个</span></div></div>' +
+    '<div class="card purple"><div class="label">有数据天数</div><div class="value">'+dailyDays+'<span class="unit">天</span></div></div>';
+
+  // 厅 chips
+  var hallList = Object.keys(hallSet).sort();
+  buildChips('daily-hall-filter', 'daily-hall-chips', hallList.map(function(h){ return {value:h, label:h}; }), filterDaily);
+
+  // 日期 chips
+  var dates = [];
+  var dateRev = {};
+  DAILY.forEach(function(r){
+    var raw = r['日期'];
+    var d = ''; if (typeof raw === 'number') d = String(raw); else if (typeof raw === 'string') d = raw.trim();
+    if (d.length >= 8) { d = d.substring(d.length-8); if (dates.indexOf(d) === -1) dates.push(d); dateRev[d] = (dateRev[d]||0) + pNum(r['多人直播直播流水']); }
+  });
+  dates.sort();
+  buildChips('daily-date-filter', 'daily-date-chips', dates.map(function(d){
+    var day = parseInt(d.substring(6,8));
+    return {value: d, label: day+'日', count: Math.round(dateRev[d]/10000)+'w'};
+  }), filterDaily);
+
+  // Top 20 本公会主播
+  var topGuests = DETAIL.filter(function(r){ return r['主播身份类别'] === '本公会主播'; }).sort(function(a,b){ return pNum(b['多人直播流水(元)']) - pNum(a['多人直播流水(元)']); }).slice(0, 20);
+  var c8 = getChart('chart-guest-top');
+  c8.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(p){ return '<b>'+p[0].name+'</b><br/>厅: '+p[0].hall+'<br/>流水: ¥'+p[0].value.toLocaleString(); } },
+    grid: { left: 140, right: 55, top: 8, bottom: 20 },
+    xAxis: { type: 'value', axisLabel: { color: '#78909c', formatter: function(v){ return (v/10000).toFixed(1)+'w'; } }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    yAxis: { type: 'category', data: topGuests.map(function(r){ return (r['主播昵称']||'') + ' @' + (r['厅主昵称']||''); }).reverse(), axisLabel: { color: '#b0bec5', fontSize: 10, width: 135, overflow: 'truncate' }, inverse: true },
+    series: [{ type: 'bar', data: topGuests.map(function(r){ return {value: pNum(r['多人直播流水(元)']), hall: r['厅主昵称']||''}; }).reverse(),
+      itemStyle: { color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#00897b'},{offset:1,color:'#26c6da'}]), borderRadius: [0,4,4,0] },
+      label: { show: true, position: 'right', color: '#90a4ae', fontSize: 10, formatter: function(p){ return (p.value/10000).toFixed(1)+'w'; } } }]
+  });
+
+  // Top 20 厅
+  var hallTotal = {};
+  DETAIL.forEach(function(r){ var h = r['厅主昵称']; if (h) hallTotal[h] = (hallTotal[h]||0) + pNum(r['多人直播流水(元)']); });
+  var topHalls = Object.keys(hallTotal).map(function(k){ return {name:k, value:hallTotal[k]}; }).sort(function(a,b){ return b.value - a.value; }).slice(0, 20);
+  var c10 = getChart('chart-guest-hall-top');
+  c10.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(p){ return '<b>'+p[0].name+'</b><br/>总流水: ¥'+p[0].value.toLocaleString(); } },
+    grid: { left: 140, right: 55, top: 8, bottom: 20 },
+    xAxis: { type: 'value', axisLabel: { color: '#78909c', formatter: function(v){ return (v/10000).toFixed(1)+'w'; } }, splitLine: { lineStyle: { color: '#1e2d3d' } } },
+    yAxis: { type: 'category', data: topHalls.map(function(r){ return r.name; }).reverse(), axisLabel: { color: '#b0bec5', fontSize: 10, width: 130, overflow: 'truncate' }, inverse: true },
+    series: [{ type: 'bar', data: topHalls.map(function(r){ return r.value; }).reverse(),
+      itemStyle: { color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#e65100'},{offset:1,color:'#ff9800'}]), borderRadius: [0,4,4,0] },
+      label: { show: true, position: 'right', color: '#90a4ae', fontSize: 10, formatter: function(p){ return (p.value/10000).toFixed(1)+'w'; } } }]
+  });
+
+  filterDaily();
+}
+
+function filterDaily() {
+  var halls = getSelectedValues('daily-hall-filter');
+  var dates = getSelectedValues('daily-date-filter');
+  var filtered = DAILY;
+  if (halls.length > 0) filtered = filtered.filter(function(r){ return halls.indexOf(r['厅主昵称']) !== -1; });
+  if (dates.length > 0) {
+    filtered = filtered.filter(function(r){
+      var raw = r['日期']; var d = '';
+      if (typeof raw === 'number') d = String(raw); else if (typeof raw === 'string') d = raw.trim();
+      if (d.length >= 8) d = d.substring(d.length-8);
+      return dates.indexOf(d) !== -1;
+    });
+  }
+  filtered.sort(function(a,b){
+    var da = String(a['日期']||''), db = String(b['日期']||'');
+    if (da !== db) return da.localeCompare(db);
+    return pNum(b['多人直播直播流水']) - pNum(a['多人直播直播流水']);
+  });
+
+  var totalRev = 0;
+  filtered.forEach(function(r){ totalRev += pNum(r['多人直播直播流水']); });
+  document.getElementById('daily-table-count').textContent = '共 ' + filtered.length + ' 条 · 合计 ¥' + totalRev.toLocaleString('zh-CN', {minimumFractionDigits: 2});
+
+  var html = '<table><thead><tr><th>日期</th><th>厅主昵称</th><th>多人直播流水</th><th>本公会流水</th><th>非本公会流水</th></tr></thead><tbody>';
+  filtered.forEach(function(r){
+    var raw = r['日期']; var d = '';
+    if (typeof raw === 'number') d = String(raw); else if (typeof raw === 'string') d = raw.trim();
+    if (d.length === 8) d = d.substring(4,6) + '/' + d.substring(6,8);
+    html += '<tr><td>'+d+'</td><td style="font-weight:500;">'+(r['厅主昵称']||'')+'</td><td style="color:#66bb6a;">¥'+pNum(r['多人直播直播流水']).toLocaleString('zh-CN',{minimumFractionDigits:2})+'</td><td>¥'+pNum(r['本公会多人直播直播流水']).toLocaleString('zh-CN',{minimumFractionDigits:2})+'</td><td>¥'+pNum(r['非本公会多人直播直播流水']).toLocaleString('zh-CN',{minimumFractionDigits:2})+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('daily-table-wrap').innerHTML = html;
+}
+
+// ===== 响应式 =====
+window.addEventListener('resize', resizeAll);
+</script>
+</body>
+</html>
