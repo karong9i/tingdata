@@ -195,6 +195,30 @@ select.filter-src { display: none; }
 
 <script>
 
+// ==========================================
+// 🔒 远程开关: Gitee ok.txt 内容不是 OK 则失效
+// 想让他不能看 → 登录 Gitee 删掉或改掉 ok.txt
+// ==========================================
+(function(){
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', 'https://gitee.com/karong9i/check/raw/master/ok.txt', true);
+  xhr.timeout = 8000;
+  xhr.onreadystatechange = function(){
+    if (xhr.readyState === 4) {
+      if (xhr.status === 200 && xhr.responseText.trim() !== 'OK') {
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#78909c;font-size:18px;font-family:sans-serif;">⛔ 看板已过期，请联系数据提供方获取最新版本</div>';
+      }
+    }
+  };
+  xhr.ontimeout = function(){
+    // Gitee 访问超时，正常放行（避免网不好误伤）
+  };
+  xhr.onerror = function(){
+    // 网络错误也放行
+  };
+  xhr.send();
+})();
+
 // ===== 全局 =====
 let SUMMARY = [];
 let DETAIL = [];
