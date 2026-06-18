@@ -194,19 +194,6 @@ select.filter-src { display: none; }
 </div>
 
 <script>
-// ==========================================
-// 🔒 到期日期: 过了这天看板自动失效
-// 修改下面的日期即可延期，重新发给老板
-// ==========================================
-var EXPIRE_DATE = '2026-06-26';  // 改这里：年-月-日
-
-(function checkExpire() {
-  var expireTime = new Date(EXPIRE_DATE + 'T23:59:59').getTime();
-  var now = Date.now();
-  if (now > expireTime) {
-    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#78909c;font-size:18px;font-family:sans-serif;">⛔ 看板已过期，请联系数据提供方获取最新版本</div>';
-  }
-})();
 
 // ===== 全局 =====
 let SUMMARY = [];
@@ -229,8 +216,6 @@ dropZone.addEventListener('drop', function(e){
 // ===== 文件处理 =====
 function handleFile(file) {
   if (!file) return;
-  var expireTime = new Date(EXPIRE_DATE + 'T23:59:59').getTime();
-  if (Date.now() > expireTime) { alert('看板已过期，请联系数据提供方'); return; }
   processFile(file);
 }
 
