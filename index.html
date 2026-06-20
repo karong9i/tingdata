@@ -79,9 +79,45 @@ select.filter-src { display: none; }
 #main-content { display: none; }
 #main-content.show { display: block; }
 .tip-box { margin: 20px 32px; padding: 14px 20px; background: rgba(66,165,245,0.06); border: 1px solid #1e3a50; border-radius: 10px; font-size: 12px; color: #78909c; display: flex; align-items: center; gap: 8px; }
+
+/* 登录遮罩 */
+.login-overlay { position: fixed; inset: 0; background: #0f1923; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.login-overlay.hidden { display: none; }
+.login-box { background: #1a2a3a; border: 1px solid #2a3a4a; border-radius: 16px; padding: 40px 36px; width: 380px; max-width: 90vw; text-align: center; }
+.login-box .login-icon { font-size: 48px; margin-bottom: 12px; }
+.login-box h2 { font-size: 20px; font-weight: 700; color: #e0e0e0; margin-bottom: 4px; }
+.login-box .login-sub { font-size: 12px; color: #546e7a; margin-bottom: 28px; }
+.login-box .field { text-align: left; margin-bottom: 16px; }
+.login-box .field label { display: block; font-size: 11px; color: #78909c; margin-bottom: 5px; letter-spacing: 0.5px; }
+.login-box .field input { width: 100%; padding: 10px 14px; font-size: 14px; border-radius: 8px; }
+.login-box .login-btn { width: 100%; padding: 11px; border: none; border-radius: 8px; background: linear-gradient(135deg, #1565c0, #42a5f5); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: all .2s; margin-top: 6px; }
+.login-box .login-btn:hover { box-shadow: 0 4px 20px rgba(66,165,245,0.3); transform: translateY(-1px); }
+.login-box .login-btn:active { transform: translateY(0); }
+.login-box .login-err { color: #ef5350; font-size: 12px; margin-top: 10px; min-height: 18px; }
+.login-box .login-footer { margin-top: 18px; font-size: 10px; color: #546e7a; border-top: 1px solid #243447; padding-top: 14px; }
 </style>
 </head>
 <body>
+
+<!-- 登录遮罩 -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-icon">🔐</div>
+    <h2>数据看板登录</h2>
+    <div class="login-sub">请输入账号密码以查看数据</div>
+    <div class="field">
+      <label>账号</label>
+      <input type="text" id="loginUser" placeholder="请输入账号" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" id="loginPass" placeholder="请输入密码" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">登 录</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-footer">厅数据可视化看板 · 仅供授权用户使用</div>
+  </div>
+</div>
 
 <div class="header">
   <div>
@@ -192,6 +228,52 @@ select.filter-src { display: none; }
 </div>
 
 <script>
+
+// ==========================================
+// 🔐 登录验证
+// ==========================================
+var LOGIN_ACCOUNTS = [
+  { user: 'admin', pass: 'aming2025' }
+  // 可按需增删: { user: 'xxx', pass: 'xxx' },
+];
+
+(function(){
+  if (sessionStorage.getItem('_dashboard_authed') === '1') {
+    document.getElementById('loginOverlay').classList.add('hidden');
+  }
+})();
+
+function doLogin(){
+  var user = document.getElementById('loginUser').value.trim();
+  var pass = document.getElementById('loginPass').value.trim();
+  var errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+
+  if (!user || !pass) { errEl.textContent = '请输入账号和密码'; return; }
+
+  var found = false;
+  for (var i = 0; i < LOGIN_ACCOUNTS.length; i++) {
+    if (LOGIN_ACCOUNTS[i].user === user && LOGIN_ACCOUNTS[i].pass === pass) {
+      found = true; break;
+    }
+  }
+  if (found) {
+    sessionStorage.setItem('_dashboard_authed', '1');
+    document.getElementById('loginOverlay').classList.add('hidden');
+  } else {
+    errEl.textContent = '账号或密码错误，请重试';
+    document.getElementById('loginPass').value = '';
+  }
+}
+
+// 回车登录
+document.addEventListener('keydown', function(e){
+  var overlay = document.getElementById('loginOverlay');
+  if (overlay && !overlay.classList.contains('hidden') && e.key === 'Enter') {
+    e.preventDefault();
+    doLogin();
+  }
+});
 
 // ==========================================
 // 🔒 远程开关: Gitee ok.txt 内容不是 OK 则失效
