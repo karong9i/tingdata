@@ -233,7 +233,7 @@ select.filter-src { display: none; }
 // 🔐 登录验证
 // ==========================================
 var LOGIN_ACCOUNTS = [
-  { user: 'admin', pass: 'aming2025' }
+  { user: 'admin', pass: 'aming2019' }
   // 可按需增删: { user: 'xxx', pass: 'xxx' },
 ];
 
@@ -838,6 +838,11 @@ function filterHallGuestTable() {
   }
   if (days.length > 0) {
     filtered = filtered.filter(function(r){
+
+
+
+
+      
       var d = pNum(r['上麦有效天']);
       return days.some(function(range){
         var parts = range.split('-');
