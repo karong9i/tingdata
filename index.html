@@ -539,6 +539,7 @@ function getChart(id) {
   var el = document.getElementById(id);
   if (!el) return null;
   if (chartInstances[id]) chartInstances[id].dispose();
+  el.innerHTML = '';  // 清空残留内容，确保ECharts干净初始化
   chartInstances[id] = echarts.init(el);
   return chartInstances[id];
 }
