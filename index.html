@@ -371,9 +371,11 @@ function processFile(file) {
 
       if (!summaryName) { alert('未找到厅数据汇总 Sheet，请确认文件格式'); return; }
 
-      SUMMARY = XLSX.utils.sheet_to_json(wb.Sheets[summaryName], { defval: '' });
+      // ===== 智能解析：兼容单层/双层表头 =====
+      var rawSummary = XLSX.utils.sheet_to_json(wb.Sheets[summaryName], { header: 1, defval: '' });
+      SUMMARY = parseSummary(rawSummary);
       DETAIL = detailName ? XLSX.utils.sheet_to_json(wb.Sheets[detailName], { defval: '' }) : [];
-      DAILY = dailyName ? XLSX.utils.sheet_to_json(wb.Sheets[dailyName], { defval: '' }) : [];
+      DAILY = dailyName ? parseDaily(XLSX.utils.sheet_to_json(wb.Sheets[dailyName], { header: 1, defval: '' })) : [];
 
       console.log('Parsed: ' + SUMMARY.length + ' summary, ' + DETAIL.length + ' detail, ' + DAILY.length + ' daily');
 
@@ -387,6 +389,83 @@ function processFile(file) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ===== 智能解析 SUMMARY（兼容单层/双层表头） =====
+function parseSummary(raw) {
+  if (raw.length < 2) return [];
+  var row0 = raw[0], row1 = raw[1];
+  // 检测双层表头：第一行大量空值
+  var empty0 = 0;
+  for (var i = 0; i < row0.length; i++) { if (!row0[i] || String(row0[i]).trim() === '') empty0++; }
+  var isDouble = empty0 > row0.length * 0.25;
+
+  var headers;
+  if (isDouble) {
+    // 双层表头：Row0=分类, Row1=实际字段名，向前继承父级名称防止子列重名
+    var lastParent = '';
+    headers = row1.map(function(name, i){
+      if (row0[i] && String(row0[i]).trim() !== '') lastParent = String(row0[i]).trim();
+      var parent = (lastParent && name !== lastParent) ? lastParent + '_' : '';
+      return parent + (name && String(name).trim() !== '' ? String(name).trim() : 'col_' + i);
+    });
+  } else {
+    headers = row0.map(function(name, i){ return name && String(name).trim() !== '' ? String(name).trim() : 'col_' + i; });
+  }
+
+  // 映射到标准列名
+  var nameMap = {
+    '厅主昵称': '厅主昵称', '基础信息_厅主昵称': '厅主昵称',
+    '粉丝量': '粉丝量', '粉丝数': '粉丝量', '基础信息_粉丝数': '粉丝量', '基础信息_粉丝量': '粉丝量',
+    '是否提报认证': '是否提报认证', '基础信息_是否提报认证': '是否提报认证',
+    '经纪人名称': '经纪人名称', '经纪人': '经纪人名称', '基础信息_经纪人': '经纪人名称',
+    '直播时长': '直播时长', '其他_直播时长': '直播时长',
+    '开播有效天': '开播有效天', '其他_开播有效天': '开播有效天',
+    '上麦率': '上麦率', '其他_上麦率': '上麦率',
+    '多人直播流水(元)': '多人直播流水(元)', '多人直播流水(元)_col_5': '多人直播流水(元)',
+    '本公会多人直播流水_总流水(元)': '本公会多人直播流水(元)',
+    '本公会多人直播流水_普通礼物(元)': '本公会多人直播普通礼物流水(元)',
+    '本公会多人直播流水_幸运值(元)': '本公会多人直播幸运值礼物流水(元)',
+    '非本公会多人直播流水_总流水(元)': '非本公会多人直播流水(元)',
+    '非本公会多人直播流水_普通礼物(元)': '非本公会多人直播普通礼物流水(元)',
+    '非本公会多人直播流水_幸运值(元)': '非本公会多人直播幸运值礼物流水(元)',
+  };
+
+  var dataStart = isDouble ? 2 : 1;
+  var result = [];
+  for (var r = dataStart; r < raw.length; r++) {
+    var obj = {};
+    for (var c = 0; c < headers.length; c++) {
+      var key = nameMap[headers[c]] || headers[c];
+      var val = raw[r][c];
+      obj[key] = val !== undefined ? val : '';
+    }
+    result.push(obj);
+  }
+  return result;
+}
+
+// ===== 智能解析 DAILY（兼容列名差异） =====
+function parseDaily(raw) {
+  if (raw.length < 2) return [];
+  var headers = raw[0];
+  // 列名映射
+  var nameMap = {
+    '多人直播流水': '多人直播直播流水',
+    '本公会多人直播流水': '本公会多人直播直播流水',
+    '非本公会多人直播流水': '非本公会多人直播直播流水',
+  };
+  var result = [];
+  for (var r = 1; r < raw.length; r++) {
+    var obj = {};
+    for (var c = 0; c < headers.length; c++) {
+      var key = (headers[c] && String(headers[c]).trim()) || 'col_' + c;
+      key = nameMap[key] || key;
+      obj[key] = raw[r][c] !== undefined ? raw[r][c] : '';
+    }
+    result.push(obj);
+  }
+  return result;
 }
 
 // ===== 数据就绪 UI 更新 =====
