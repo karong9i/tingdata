@@ -15,7 +15,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Microsoft YaHei', sans-s
 .drop-zone:hover, .drop-zone.drag-over { border-color: #42a5f5; background: #1a3040; box-shadow: 0 0 40px rgba(66,165,245,0.08); }
 .drop-zone.has-data { border-color: #66bb6a; border-style: solid; padding: 16px 24px; }
 .drop-zone .dz-icon { font-size: 56px; margin-bottom: 12px; display: block; }
-.drop-zone .dz-title { font-size: 18px; font-weight: 600; color: #b0bec5; margin-bottom: 6px; }
+.drop-zone .dz-title { font-size: 18px; font-weight: 600; color: #b0bec5; margin-bottom: 6px; } 
 .drop-zone .dz-sub { font-size: 13px; color: #546e7a; }
 .drop-zone .dz-success { display: none; color: #66bb6a; font-size: 14px; font-weight: 600; }
 .drop-zone.has-data .dz-success { display: block; }
@@ -95,6 +95,10 @@ select.filter-src { display: none; }
 .login-box .login-btn:active { transform: translateY(0); }
 .login-box .login-err { color: #ef5350; font-size: 12px; margin-top: 10px; min-height: 18px; }
 .login-box .login-footer { margin-top: 18px; font-size: 10px; color: #546e7a; border-top: 1px solid #243447; padding-top: 14px; }
+
+/* 导出按钮 */
+.btn-export { padding: 8px 18px; border: 1px solid #66bb6a; border-radius: 8px; background: rgba(102,187,106,0.1); color: #66bb6a; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; white-space: nowrap; }
+.btn-export:hover { background: #66bb6a; color: #fff; box-shadow: 0 4px 16px rgba(102,187,106,0.25); }
 </style>
 </head>
 <body>
@@ -129,6 +133,7 @@ select.filter-src { display: none; }
     <button class="tab-btn" onclick="switchView('hall')" id="btn-hall">🏠 厅数据</button>
     <button class="tab-btn" onclick="switchView('guest')" id="btn-guest">📅 按天分析</button>
   </div>
+  <button class="btn-export" id="btn-export" style="display:none;" onclick="exportHTML()">📥 导出数据看板</button>
 </div>
 
 <!-- 拖拽上传区 -->
@@ -230,6 +235,14 @@ select.filter-src { display: none; }
 <script>
 
 // ==========================================
+// 📦 内嵌数据检测（导出版本自动加载数据）
+// ==========================================
+var _EMBEDDED_DATA_ = null;
+if (typeof _EMBEDDED_DATA_RAW_ !== 'undefined') {
+  try { _EMBEDDED_DATA_ = JSON.parse(_EMBEDDED_DATA_RAW_); } catch(e) {}
+}
+
+// ==========================================
 // 🔐 登录验证
 // ==========================================
 var LOGIN_ACCOUNTS = [
@@ -304,6 +317,18 @@ let SUMMARY = [];
 let DETAIL = [];
 let DAILY = [];
 
+// 导出版本自动加载内嵌数据
+if (_EMBEDDED_DATA_ && _EMBEDDED_DATA_.summary && _EMBEDDED_DATA_.summary.length > 0) {
+  SUMMARY = _EMBEDDED_DATA_.summary;
+  DETAIL = _EMBEDDED_DATA_.detail || [];
+  DAILY = _EMBEDDED_DATA_.daily || [];
+  // 跳过登录
+  if (document.getElementById('loginOverlay')) {
+    document.getElementById('loginOverlay').classList.add('hidden');
+  }
+  showDataReady();
+}
+
 // ===== 拖拽事件 =====
 const dropZone = document.getElementById('dropZone');
 ['dragenter','dragover'].forEach(function(evt){
@@ -354,16 +379,7 @@ function processFile(file) {
 
       if (SUMMARY.length === 0) { alert('数据为空，请确认文件内容'); return; }
 
-      // 更新 UI
-      dropZone.classList.add('has-data');
-      document.getElementById('dz-info').textContent = ' 解析到 ' + SUMMARY.length + ' 个厅、' + DETAIL.length + ' 条嘉宾记录';
-      document.getElementById('main-content').classList.add('show');
-      document.getElementById('tab-btns').style.display = 'flex';
-      document.getElementById('tip-hall-count').textContent = SUMMARY.length;
-      document.getElementById('tip-guest-count').textContent = DETAIL.length;
-
-      destroyAllCharts();
-      switchView('overview');
+      showDataReady();
 
     } catch(err) {
       console.error(err);
@@ -371,6 +387,37 @@ function processFile(file) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ===== 数据就绪 UI 更新 =====
+function showDataReady() {
+  document.getElementById('dropZone').classList.add('has-data');
+  document.getElementById('dz-info').textContent = ' 解析到 ' + SUMMARY.length + ' 个厅、' + DETAIL.length + ' 条嘉宾记录';
+  document.getElementById('main-content').classList.add('show');
+  document.getElementById('tab-btns').style.display = 'flex';
+  document.getElementById('tip-hall-count').textContent = SUMMARY.length;
+  document.getElementById('tip-guest-count').textContent = DETAIL.length;
+  document.getElementById('btn-export').style.display = 'inline-block';
+
+  destroyAllCharts();
+  switchView('overview');
+}
+
+// ===== 导出数据看板 =====
+function exportHTML() {
+  var html = document.documentElement.outerHTML;
+  // 注入内嵌数据（双序列化：先JSON.stringify数据，放入HTML时再stringify一次作为字符串字面量）
+  var embed = '<script>var _EMBEDDED_DATA_RAW_=' + JSON.stringify(JSON.stringify({summary:SUMMARY, detail:DETAIL, daily:DAILY})) + ';<\/script>';
+  html = html.replace('<script src="xlsx.full.min.js"><\/script>', '<script src="xlsx.full.min.js"><\/script>\n' + embed);
+  // 导出版本隐藏登录和导出按钮
+  html = html.replace('<\/style>', '#loginOverlay{display:none!important}\n.btn-export{display:none!important}\n<\/style>');
+  // 下载
+  var blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '厅数据看板_' + new Date().toISOString().slice(0,10) + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ===== 工具 =====
