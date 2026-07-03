@@ -484,16 +484,19 @@ function showDataReady() {
 
 // ===== 导出数据看板 =====
 function exportHTML() {
-  var html = document.documentElement.outerHTML;
+  // 请求原始HTML源码（浏览器缓存，瞬间返回，非DOM序列化——避免图表渲染残留）
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', location.href, false);
+  xhr.send();
+  var html = xhr.responseText;
 
   // 将相对路径转为绝对路径（导出版本放到任意位置都能加载 JS）
   var base = location.href.replace(/\/[^\/]*$/, '/');
   html = html.replace('src="echarts.min.js"', 'src="' + base + 'echarts.min.js"');
-  html = html.replace('src="xlsx.full.min.js"', 'src="' + base + 'xlsx.full.min.js"');
 
-  // 注入内嵌数据脚本（在<head>中独立脚本块）
+  // xlsx 引用替换为内嵌数据脚本（在<head>中独立脚本块）
   var embed = '<script>var _EMBEDDED_DATA_RAW_=' + JSON.stringify(JSON.stringify({summary:SUMMARY, detail:DETAIL, daily:DAILY})) + ';<\/script>';
-  html = html.replace('<script src="' + base + 'xlsx.full.min.js"><\/script>', embed);
+  html = html.replace('<script src="xlsx.full.min.js"><\/script>', embed);
 
   // 导出版本隐藏登录、导出按钮、上传区
   html = html.replace('<\/style>', '#loginOverlay{display:none!important}\n.btn-export{display:none!important}\n.drop-zone{display:none!important}\n<\/style>');
