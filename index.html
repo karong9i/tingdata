@@ -484,12 +484,31 @@ function showDataReady() {
 
 // ===== 导出数据看板 =====
 function exportHTML() {
+  // 读取已加载的 echarts 脚本内容（浏览器缓存，瞬间返回）
+  var echartsCode = '';
+  try {
+    var sx = new XMLHttpRequest();
+    sx.open('GET', 'echarts.min.js', false);
+    sx.send();
+    if (sx.status === 200) echartsCode = sx.responseText;
+  } catch(e) { console.warn('无法内嵌echarts:', e); }
+
   var html = document.documentElement.outerHTML;
-  // 注入内嵌数据（双序列化：先JSON.stringify数据，放入HTML时再stringify一次作为字符串字面量）
+
+  // echarts 内嵌为行内脚本（不再依赖外部文件）
+  if (echartsCode) {
+    html = html.replace('<script src="echarts.min.js"><\/script>', '<script>' + echartsCode + '<\/script>');
+  }
+  // 移除 xlsx 引用（导出版本数据已内嵌，无需解析Excel）
+  html = html.replace('<script src="xlsx.full.min.js"><\/script>', '');
+
+  // 注入内嵌数据（精准插入在主脚本开头之前）
   var embed = '<script>var _EMBEDDED_DATA_RAW_=' + JSON.stringify(JSON.stringify({summary:SUMMARY, detail:DETAIL, daily:DAILY})) + ';<\/script>';
-  html = html.replace('<script src="xlsx.full.min.js"><\/script>', '<script src="xlsx.full.min.js"><\/script>\n' + embed);
+  html = html.replace('// ==========================================\n// 📦 内嵌数据检测', embed + '\n\n// ==========================================\n// 📦 内嵌数据检测');
+
   // 导出版本隐藏登录和导出按钮
-  html = html.replace('<\/style>', '#loginOverlay{display:none!important}\n.btn-export{display:none!important}\n<\/style>');
+  html = html.replace('<\/style>', '#loginOverlay{display:none!important}\n.btn-export{display:none!important}\n.drop-zone{display:none!important}\n<\/style>');
+
   // 下载
   var blob = new Blob([html], {type:'text/html;charset=utf-8'});
   var a = document.createElement('a');
