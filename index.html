@@ -479,7 +479,12 @@ function showDataReady() {
   document.getElementById('btn-export').style.display = 'inline-block';
 
   destroyAllCharts();
-  switchView('overview');
+  // 等待浏览器完成布局后再初始化ECharts（导出版本在页面加载时同步渲染，需等DOM就绪）
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      switchView('overview');
+    });
+  });
 }
 
 // ===== 导出数据看板 =====
