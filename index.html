@@ -499,12 +499,9 @@ function exportHTML() {
   if (echartsCode) {
     html = html.replace('<script src="echarts.min.js"><\/script>', '<script>' + echartsCode + '<\/script>');
   }
-  // 移除 xlsx 引用（导出版本数据已内嵌，无需解析Excel）
-  html = html.replace('<script src="xlsx.full.min.js"><\/script>', '');
-
-  // 注入内嵌数据（精准插入在主脚本开头之前）
+  // xlsx 引用替换为内嵌数据脚本（在<head>中，独立脚本块，不破坏主脚本结构）
   var embed = '<script>var _EMBEDDED_DATA_RAW_=' + JSON.stringify(JSON.stringify({summary:SUMMARY, detail:DETAIL, daily:DAILY})) + ';<\/script>';
-  html = html.replace('// ==========================================\n// 📦 内嵌数据检测', embed + '\n\n// ==========================================\n// 📦 内嵌数据检测');
+  html = html.replace('<script src="xlsx.full.min.js"><\/script>', embed);
 
   // 导出版本隐藏登录和导出按钮
   html = html.replace('<\/style>', '#loginOverlay{display:none!important}\n.btn-export{display:none!important}\n.drop-zone{display:none!important}\n<\/style>');
